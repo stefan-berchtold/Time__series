@@ -1,0 +1,232 @@
+---
+title: "Einfluss CO2-Preis auf den Aktienkurs von EVU"
+author:
+- Joël Felder, Stefan Berchtold
+date:
+- "Dokument erstellt am `r format(Sys.Date(), '%d.%m.%Y')` "
+header-includes: \usepackage[ngerman]{babel} \usepackage{graphicx} \usepackage{float}
+  \usepackage{fancyhdr} \pagestyle{fancy} \setlength\headheight{22pt} \fancyhead[L]{\includegraphics[width=3cm]{../pics/logo.png}}
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 3
+    theme: yeti
+  pdf_document:
+    fig_caption: yes
+    highlight: tango
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Ausgangslage
+
+Benutzte Libraries für diese Arbeit
+
+```{r , message = FALSE}
+library (xts)
+library (fBasics)
+library (ggfortify)
+library (ggplot2)
+library (timeSeries)
+library (tseries)
+library (zoo)
+library (plotly)
+library (vars)
+library (fpp2)
+
+```
+
+Einlesen der Daten
+
+```{r , message = FALSE}
+co2_evu <- read.csv("timeseries-1.csv", header = TRUE, sep = ";")
+
+```
+
+Umwandlug des Datensatzes in Zeitreihe
+
+```{r Zeitreihen, message=FALSE,}
+daten <-xts(co2_evu[,-1], order.by=as.Date(co2_evu$X, "%d.%m.%y"))
+attr(daten, 'frequency') <- 7
+periodicity(daten)
+
+
+```
+
+Wachstumsraten der untersuchten Aktienkurse und des CO2 Preises
+
+```{r}
+autoplot(log(daten[,-2:-3]), facets = FALSE)+
+  ggtitle("Wachstumsraten Aktienkurse EVU und CO2-Preis") + xlab("Jahr") + ylab("Wachstumsrate")+
+  labs(color="Legende") +
+  scale_colour_manual(breaks = c("CO2.Prc", "BKW", "RWE", "Verbund"), 
+                      values = c("brown", "red", "blue", "purple"))
+
+```
+
+
+## Datenaufbereitung 
+
+Dekomposition der Zeitreihen
+
+```{r, echo=TRUE, message = FALSE}
+## CO2 Preis
+plot(decompose(as.ts(daten$CO2.Prc)))
+## Aktienkurs BKW AG
+plot(decompose(as.ts(daten$BKW)))
+## Atienkurs RWE AG
+plot(decompose(as.ts(daten$RWE)))
+## Aktienkurs Verbund AG
+plot(decompose(as.ts(daten$Verbund)))
+
+```
+
+Testen auf Stationarität
+
+```{r,message = FALSE}
+adf.test(daten$CO2.Prc)
+adf.test(daten$BKW)
+adf.test(daten$RWE)
+adf.test(daten$Verbund)
+```
+
+Keine der untersuchten Zeitreihen ist stationär. Um Stationarität zu erreichen, werden die Zeitreihen differenziert  und logarithmiert. Dies führt zu stetigen Renditen.
+
+```{r}
+dco2 <- diff(log(daten$CO2.Prc))[-1]
+dbkw <- diff(log(daten$BKW))[-1]
+drwe <- diff(log(daten$RWE))[-1]
+dverbund <- diff(log(daten$Verbund))[-1]
+
+hist(dco2, breaks = 50, main = "Histogram of continuous C02 returns", xlab="C02 returns",freq = FALSE)
+hist(dbkw, breaks = 50, main = "Histogram of continuous BKW returns", xlab="BKW returns",freq = FALSE)
+hist(drwe, breaks = 50, main = "Histogram of continuous RWE returns", xlab="RWE returns", freq = FALSE)
+hist(dverbund, breaks = 50, main = "Histogram of continuous Verbund returns", xlab="Verbund returns", freq = FALSE)
+
+
+
+```
+
+Die Histogramme zeigen, dass die stetigen Renditen annährend normalverteilt sind.
+
+```{r,message=FALSE}
+## CO2 Renditen
+plot(decompose((diff(log(as.ts(daten$CO2.Prc))))))
+## Renditen BKW AG
+plot(decompose((diff(log(as.ts(daten$BKW))))))
+## Renditen RWE AG
+plot(decompose(diff(log((as.ts(daten$RWE))))))
+## Renditen Verbund AG
+plot(decompose(diff(log(as.ts(daten$Verbund)))))
+```
+
+Ein erneuter Blick auf die Dekomposition der Zeitreihen zeigt, dass die Saisonalität klar reduziert wurde sowie kein klarer Trend erkennbar ist. 
+
+```{r}
+
+adf.test(dco2)
+adf.test(dbkw)
+adf.test(drwe)
+adf.test(dverbund)
+```
+
+Der p-Wert der Dickey-Fuller Tests ist bei allen Zeitreihen statistisch signifikant. Anhand der nun stationären Zeitreihen werden als nächstes mehrere vektorautoregressive Modelle geschätzt.
+
+## Vektorautoregressives Modell
+
+```{r, message=FALSE}
+var_bkw <- VAR(cbind(dbkw, dco2), type = "const", ic = "AIC")
+summary(VAR(cbind(dbkw, dco2), type = "const", ic = "AIC"))
+plot(var_bkw)
+
+var_rwe <- VAR(cbind(dco2, drwe), type = "const", ic = "AIC")
+summary(VAR(cbind(dco2, drwe), type = "const", ic = "AIC"))
+plot(var_rwe)
+
+var_verbund <- VAR(cbind(dco2, dverbund), type = "const", ic = "AIC")
+summary(VAR(cbind(dco2, dverbund), type = "const", ic = "AIC"))
+plot(var_verbund)
+
+
+```
+
+
+
+
+Man sieht, dass die BKW AG Returns mit Lag 1 signifikant unterschiedlich von 0 ist und somit Einfluss auf den Return heute hat. Die CO2 Returns scheinen keinen Einfluss zu haben.
+Beim vektorautoregressiven Modell für die RWE AG ist keine Variable statistisch signifikant unterschiedlich von 0.
+Im  Modell der Verbund AG scheint der CO2 Return mit Lag 1 statistisch signifikant unterschiedlich von 0 zu sein.
+Die Residuen aller Modelle folgen einer Gaussian White Noise.
+
+
+##Granger Kausalitätstest
+
+```{r}
+
+causality(var_bkw, cause = "CO2.Prc")
+causality(var_bkw, cause = "BKW")
+
+causality(var_rwe, cause = "CO2.Prc")
+causality(var_rwe, cause = "RWE")
+
+causality(var_verbund, cause = "CO2.Prc")
+causality(var_verbund, cause = "Verbund")
+```
+
+Der Granger Kausalitäts Test zeigt dass, im 95% Konfidenzintervall, einzig Änderungen im  CO2 Return signifikante Änderungen der Verbund AG Returns bewirkt. Alle anderen Variablen sind nicht Granger-kausal. 
+
+
+## Impulse Response Funktion
+
+Als nächste wird untersucht, inwiefern Schocks im CO2 Preis die Aktienkurse der untersuchten Firmen beeinflusst.
+```{r}
+plot(irf(var_verbund, impulse = "CO2.Prc", response = "Verbund"))
+plot(irf(var_bkw,impulse = "CO2.Prc", response = "BKW"))
+plot(irf(var_rwe, impulse = "CO2.Prc", response = "RWE"))
+
+```
+
+Ein Schock des CO2 Preises bewirkt eine vernachlässigbare Änderung der Returns der BKW AG. Bei der RWE AG bewirkt der Schock eine kleine Veränderung der Returns über mehrer Perionden. Den grössten Effekt, auch über mehrer Perioden, hat der Schock auf die Veränderung der Returns der Verbund AG.     
+
+## Einzelanalyse der Verbund AG  
+Der CO2-Preis hat auf die Verbund AG den signifikantesten Einfluss. In einem letzten Schritt wurde versucht, das Modell der Verbund AG zu verbessern, da das R-squared nur  0.007131 beträgt. Dies bedeutet, dass nur 0.7% der Variabilität der Zeitreihe mit dem Modell erklärt werden kann. Dabei wurde als erstes das Volumen der gehandelten CO2-Zertifikate betrachtet. Mehr Volumen sollte zu genaueren Pricing führen und allgemein mehr Informationen im Preis enthalten. Dies könnte das Modell verbessern.     
+
+```{r}
+plot(daten$CO2.Vol, main = "Gehandeltes Volumen von C02-Zertifikate")
+```
+
+Man sieht, dass das gehandelte Volumen der CO2 Zertifikate etwa ab 2017 rapide ansteigt. Deswegen wird die Zeitreihe ab 2017 etwas genauer untersucht.
+
+```{r}
+daten1<-daten[c("2017","2018","2019")]
+
+
+dco21 <- diff(log(daten1$CO2.Prc))[-1]
+dverbund1 <- diff(log(daten1$Verbund))[-1]
+
+var_verbund1 <- VAR(cbind(dco21, dverbund1), type = "const", ic = "AIC")
+summary(VAR(cbind(dco21, dverbund1), type = "const", ic = "AIC"))
+plot(var_verbund1)
+causality(var_verbund1, cause = "CO2.Prc")
+```
+
+Im neu geschätzten vektorautoregressiven Modell scheint der CO2 Return mit Lag 1 immer noch statistisch signifikant unterschiedlich von 0 zu sein.Jedoch hat sich das R-squared auf 0.01232 verbessert. Jetzt kann bereits ca. 1.2% der Variabilität der Zeitreihe mit dem Modell erklärt werden. Ausserdem zeigt der Granger Kausalitäts Test  dass, im 95% Konfidenzintervall, Änderungen im  CO2 Return immer noch signifikante Änderungen der Verbund AG Returns bewirkt.
+
+```{r}
+plot(irf(var_verbund1, impulse = "CO2.Prc", response = "Verbund"))
+```
+
+Eine Änderung des CO2 Preises bewirkt eine grösse Änderung, über mehrere Perioden, des Returns der Verbund AG als im ersten vektorautoregressiven Modell.
+
+
+
+
+
+
+

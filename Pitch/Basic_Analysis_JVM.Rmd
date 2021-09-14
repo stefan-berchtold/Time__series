@@ -1,0 +1,120 @@
+---
+title: "Geschäftsanalyse JVM"
+author:
+- Joël Felder, Stefan Berchtold
+date:
+- "Dokument erstellt am `r format(Sys.Date(), '%d.%m.%Y')` "
+header-includes: \usepackage[ngerman]{babel} \usepackage{graphicx} \usepackage{float}
+  \usepackage{fancyhdr} \pagestyle{fancy} \setlength\headheight{22pt} \fancyhead[L]{\includegraphics[width=3cm]{../pics/logo.png}}
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 3
+    theme: yeti
+  pdf_document:
+    fig_caption: yes
+    highlight: tango
+    number_sections: yes
+    toc: yes
+---
+```{r setup, include=FALSE}
+library(dplyr)
+library(plotly)
+knitr::opts_chunk$set(echo = TRUE, fig.width = 10)
+```
+
+```{r import}
+df <- readxl::read_xlsx(path = paste0(getwd(),"/Leistungen_JVM_Review_2019.xlsx"))
+df <- as.data.frame(df)
+```
+
+
+# Analyse der Einzelnen Variablen 
+
+## Kopf der Daten
+```{r head of data}
+knitr::kable(head(df, n=10))
+```
+
+## Zusammenfassung der Daten
+```{r summary}
+summary(df)
+```
+
+
+## Aufwand
+
+### Verteilung der Aufwände {.tabset}
+```{r, results='asis'}
+for (i in c(10,20,50,100)) {
+  cat("\n")
+  cat("#### Breaks = ",i)
+  cat("\n")
+  hist(df$Aufwand, breaks = i, col = "darkseagreen")
+  cat("\n")
+}
+```
+
+
+### Aufwand nach Parameter {.tabset}
+
+```{r, results='asis', fig.height= 8, fig.width= 14}
+params <- names(df)[1:9]
+
+for (i in params) {
+  ncol = length(unique(df[,i]))
+  cat("\n")
+  cat("#### Nach ",i)
+  cat("\n")
+  boxplot(Aufwand ~ get(i), data = df, col = rainbow(ncol), xlab = i)
+  cat("\n")
+}
+```
+
+### Gesamtaufwand pro Tag 
+```{r}
+aufw_pro_tag <- df %>% 
+  group_by(Datum) %>% 
+  summarize(total_aufwand = sum(Aufwand), 
+            mean_aufwand = mean(Aufwand))
+
+plot(aufw_pro_tag$Datum, aufw_pro_tag$total_aufwand, type = "l")
+```
+
+### Mittlerer Aufwand pro Tag
+```{r}
+plot(aufw_pro_tag$Datum, aufw_pro_tag$mean_aufwand, type = "l")
+```
+
+
+
+# Stefan & Michi - Arbeit 
+
+# Wer hat am engsten zusammengearbeitet? 
+
+## Aufwand pro MA pro Projekt
+Zeigt nicht viel...
+```{r}
+aufw_pro_MA_pro_Projekt <- df %>% 
+  group_by(Mitarbeiter_Anonym, Projekt_Anonym) %>% 
+  # group_by(Projekt_Anonym) %>%
+  summarize(total_aufwand = sum(Aufwand))
+
+
+plot_ly(x = aufw_pro_MA_pro_Projekt$Mitarbeiter_Anonym, 
+        y = aufw_pro_MA_pro_Projekt$Projekt_Anonym, 
+        z = aufw_pro_MA_pro_Projekt$total_aufwand,
+        type="scatter3d", mode="markers", color = aufw_pro_MA_pro_Projekt$total_aufwand,
+        size = 1) %>%
+  layout(
+    title = "Aufwand pro MA pro Projekt",
+    scene = list(
+      xaxis = list(title = "MA"),
+      yaxis = list(title = "Projekt"),
+      zaxis = list(title = "Aufwand")
+    ))
+```
+
+Interessanter wäre die Frage, wer mit wem, wie oft zusammengearbeitet hat. 
